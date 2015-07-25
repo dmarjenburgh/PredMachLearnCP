@@ -1,0 +1,93 @@
+---
+title: "Dumbbell Curl Exercise Form Recognition"
+subtitle: "Practical Machine Learning Course Project Report"
+author: "Daniel Marjenburgh"
+date: "25 Jul 2015"
+output: html_document
+---
+
+## Background
+Using devices such as *Jawbone Up*, *Nike FuelBand*, and *Fitbit* it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.
+
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: (http://groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset). 
+
+The 5 ways of performing the dumbbell have been labelled $A, B, C, D$ and $E$ in the `classe` variable:
+
+- Class A. Correct form (According to specification)
+- Class B. Throwing the elbows to the front
+- Class C. Lifting the dumbbell only halfway
+- Class D. Lowering the dumbbell only halfway
+- Class E. Throwing the hips forward
+
+The goal is to build a machine learning algorithm that will predict the class of the exercise from the data collected.
+
+## Load libraries
+```{r}
+library(caret)
+library(randomForest)
+```
+
+## Loading the data
+The raw training and testing data can be loaded from the following URLs:
+```{r, eval = FALSE}
+training_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testing_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training_filename <- "pml-training.csv"
+testing_filename <- "pml-testing.csv"
+download.file(url = training_url, destfile = training_filename, method = "curl")
+download.file(url = testing_url, destfile = testing_filename, method = "curl")
+```
+
+## Splitting the data
+We will split the original training set into a subtraining set and a testing set for cross-validation of our model.
+The subtraining set will be 75% of the original training set.
+```{r}
+set.seed(43110)
+pml_train_full <- read.csv("pml-training.csv", na.strings = c("NA", "#DIV/0!", ""))
+pml_test <- read.csv("pml-testing.csv", na.strings = c("NA", "#DIV/0!", ""))
+inTrain <- createDataPartition(pml_train_full$classe, p = 0.75, list = FALSE)
+pml_train <- pml_train_full[inTrain,]
+pml_cross_validation <- pml_train_full[-inTrain,]
+```
+
+We will remove the near zero vars and variables that have missing data that will make building our model more difficult. The transformation is created as a function that can be used on the test set as well.
+```{r}
+nzv <- nearZeroVar(pml_train)
+transformData <- function(x) {
+    res <- x[, -nzv] # remove nzv
+    res <- res[, colSums(is.na(res)) == 0] # remove variables with NA
+    res <- res[, -c(1:6)] # remove measurement number, user_name and timestamps
+    res
+}
+pml_train <- transformData(pml_train)
+pml_cross_validation <- transformData(pml_cross_validation)
+pml_test <- transformData(pml_test)
+```
+
+The following features will be taken into account for our ML algorithm:
+```{r}
+names(pml_train)
+```
+
+## Algorithm and prediction
+We will use the randomForest ML algorithm on the training data to build the model
+```{r}
+model <- randomForest(classe ~ ., data = pml_train)
+```
+
+In other to evaluate the out of sample error, we will use the model to predict the class in the cross-validation set
+and look at the confusion matrix.
+```{r}
+pred <- predict(model, newdata = pml_cross_validation)
+cm <- confusionMatrix(pred, pml_cross_validation$classe)
+cm
+cm$overall
+```
+
+The error rate is roughly `0.71 %`.
+
+## Test data prediction
+Finally, we will use the algorithm on the 20 test cases given to us:
+```{r}
+predict(model, newdata = pml_test)
+```
